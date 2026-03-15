@@ -287,6 +287,17 @@ function buildHookCommand(configDir, hookName) {
 }
 
 /**
+ * Resolve the opencode config file path, preferring .jsonc if it exists.
+ */
+function resolveOpencodeConfigPath(configDir) {
+  const jsoncPath = path.join(configDir, 'opencode.jsonc');
+  if (fs.existsSync(jsoncPath)) {
+    return jsoncPath;
+  }
+  return path.join(configDir, 'opencode.json');
+}
+
+/**
  * Read and parse settings.json, returning empty object if it doesn't exist
  */
 function readSettings(settingsPath) {
@@ -324,7 +335,7 @@ function getCommitAttribution(runtime) {
   let result;
 
   if (runtime === 'opencode') {
-    const config = readSettings(path.join(getGlobalDir('opencode', null), 'opencode.json'));
+    const config = readSettings(resolveOpencodeConfigPath(getGlobalDir('opencode', null)));
     result = config.disable_ai_attribution === true ? null : undefined;
   } else if (runtime === 'gemini') {
     // Gemini: check gemini settings.json for attribution config
@@ -1816,17 +1827,15 @@ function uninstall(isGlobal, runtime = 'claude') {
     }
   }
 
-  // 6. For OpenCode, clean up permissions from opencode.json
+  // 6. For OpenCode, clean up permissions from opencode.json or opencode.jsonc
   if (isOpencode) {
-    // For local uninstalls, clean up ./.opencode/opencode.json
-    // For global uninstalls, clean up ~/.config/opencode/opencode.json
     const opencodeConfigDir = isGlobal
       ? getOpencodeGlobalDir()
       : path.join(process.cwd(), '.opencode');
-    const configPath = path.join(opencodeConfigDir, 'opencode.json');
+    const configPath = resolveOpencodeConfigPath(opencodeConfigDir);
     if (fs.existsSync(configPath)) {
       try {
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        const config = parseJsonc(fs.readFileSync(configPath, 'utf8'));
         let modified = false;
 
         // Remove GSD permission entries
@@ -1854,7 +1863,7 @@ function uninstall(isGlobal, runtime = 'claude') {
         if (modified) {
           fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
           removedCount++;
-          console.log(`  ${green}✓${reset} Removed GSD permissions from opencode.json`);
+          console.log(`  ${green}✓${reset} Removed GSD permissions from ${path.basename(configPath)}`);
         }
       } catch (e) {
         // Ignore JSON parse errors
@@ -1939,15 +1948,15 @@ function parseJsonc(content) {
  * @param {boolean} isGlobal - Whether this is a global or local install
  */
 function configureOpencodePermissions(isGlobal = true) {
-  // For local installs, use ./.opencode/opencode.json
-  // For global installs, use ~/.config/opencode/opencode.json
+  // For local installs, use ./.opencode/
+  // For global installs, use ~/.config/opencode/
   const opencodeConfigDir = isGlobal
     ? getOpencodeGlobalDir()
     : path.join(process.cwd(), '.opencode');
-  const configPath = path.join(opencodeConfigDir, 'opencode.json');
-
   // Ensure config directory exists
   fs.mkdirSync(opencodeConfigDir, { recursive: true });
+
+  const configPath = resolveOpencodeConfigPath(opencodeConfigDir);
 
   // Read existing config or create empty object
   let config = {};
@@ -1957,7 +1966,8 @@ function configureOpencodePermissions(isGlobal = true) {
       config = parseJsonc(content);
     } catch (e) {
       // Cannot parse - DO NOT overwrite user's config
-      console.log(`  ${yellow}⚠${reset} Could not parse opencode.json - skipping permission config`);
+      const configFile = path.basename(configPath);
+      console.log(`  ${yellow}⚠${reset} Could not parse ${configFile} - skipping permission config`);
       console.log(`    ${dim}Reason: ${e.message}${reset}`);
       console.log(`    ${dim}Your config was NOT modified. Fix the syntax manually if needed.${reset}`);
       return;
