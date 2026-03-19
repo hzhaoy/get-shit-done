@@ -19,6 +19,7 @@ One command creates all fix phases — no manual `/gsd:add-phase` per gap.
 
 <execution_context>
 @~/.claude/get-shit-done/workflows/plan-milestone-gaps.md
+@~/.claude/get-shit-done/references/text-mode.md
 </execution_context>
 
 <context>

@@ -12,6 +12,10 @@ Review all 999.x backlog items and optionally promote them into the active
 milestone sequence or remove stale entries.
 </objective>
 
+<execution_context>
+@~/.claude/get-shit-done/references/text-mode.md
+</execution_context>
+
 <process>
 
 1. **List backlog items:**

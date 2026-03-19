@@ -21,6 +21,7 @@ Routes to the settings workflow which handles:
 
 <execution_context>
 @~/.claude/get-shit-done/workflows/settings.md
+@~/.claude/get-shit-done/references/text-mode.md
 </execution_context>
 
 <process>

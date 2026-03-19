@@ -31,6 +31,7 @@ describe('init commands', () => {
     assert.strictEqual(output.state_path, '.planning/STATE.md');
     assert.strictEqual(output.roadmap_path, '.planning/ROADMAP.md');
     assert.strictEqual(output.config_path, '.planning/config.json');
+    assert.strictEqual(output.text_mode, false, 'text_mode should default to false');
   });
 
   test('init plan-phase returns file paths', () => {

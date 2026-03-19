@@ -24,6 +24,7 @@ Check for active sessions:
 ```bash
 ls .planning/debug/*.md 2>/dev/null | grep -v resolved | head -5
 ```
+@~/.claude/get-shit-done/references/text-mode.md
 </context>
 
 <process>

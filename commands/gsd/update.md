@@ -20,6 +20,7 @@ Routes to the update workflow which handles:
 
 <execution_context>
 @~/.claude/get-shit-done/workflows/update.md
+@~/.claude/get-shit-done/references/text-mode.md
 </execution_context>
 
 <process>

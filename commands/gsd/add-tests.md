@@ -26,6 +26,7 @@ Output: Test files committed with message `test(phase-{N}): add unit and E2E tes
 
 <execution_context>
 @~/.claude/get-shit-done/workflows/add-tests.md
+@~/.claude/get-shit-done/references/text-mode.md
 </execution_context>
 
 <context>

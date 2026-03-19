@@ -18,6 +18,7 @@ changes that are irrelevant to code review.
 
 <execution_context>
 @~/.claude/get-shit-done/workflows/pr-branch.md
+@~/.claude/get-shit-done/references/text-mode.md
 </execution_context>
 
 <process>

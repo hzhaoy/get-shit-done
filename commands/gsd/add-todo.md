@@ -24,6 +24,7 @@ Routes to the add-todo workflow which handles:
 
 <execution_context>
 @~/.claude/get-shit-done/workflows/add-todo.md
+@~/.claude/get-shit-done/references/text-mode.md
 </execution_context>
 
 <context>

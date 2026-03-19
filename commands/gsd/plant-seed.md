@@ -21,6 +21,7 @@ Consumed by: /gsd:new-milestone (scans seeds and presents matches)
 
 <execution_context>
 @~/.claude/get-shit-done/workflows/plant-seed.md
+@~/.claude/get-shit-done/references/text-mode.md
 </execution_context>
 
 <process>

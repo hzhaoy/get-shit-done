@@ -18,6 +18,7 @@ Use when you know what you want but don't know which `/gsd:*` command to run.
 <execution_context>
 @~/.claude/get-shit-done/workflows/do.md
 @~/.claude/get-shit-done/references/ui-brand.md
+@~/.claude/get-shit-done/references/text-mode.md
 </execution_context>
 
 <context>

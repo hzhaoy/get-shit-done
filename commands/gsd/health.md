@@ -14,6 +14,7 @@ Validate `.planning/` directory integrity and report actionable issues. Checks f
 
 <execution_context>
 @~/.claude/get-shit-done/workflows/health.md
+@~/.claude/get-shit-done/references/text-mode.md
 </execution_context>
 
 <process>

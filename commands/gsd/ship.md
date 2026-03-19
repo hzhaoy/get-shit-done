@@ -18,6 +18,7 @@ Closes the plan → execute → verify → ship loop.
 
 <execution_context>
 @~/.claude/get-shit-done/workflows/ship.md
+@~/.claude/get-shit-done/references/text-mode.md
 </execution_context>
 
 Execute the ship workflow from @~/.claude/get-shit-done/workflows/ship.md end-to-end.

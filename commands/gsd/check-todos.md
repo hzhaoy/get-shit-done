@@ -22,6 +22,7 @@ Routes to the check-todos workflow which handles:
 
 <execution_context>
 @~/.claude/get-shit-done/workflows/check-todos.md
+@~/.claude/get-shit-done/references/text-mode.md
 </execution_context>
 
 <context>

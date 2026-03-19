@@ -23,6 +23,7 @@ Routes to the resume-project workflow which handles:
 
 <execution_context>
 @~/.claude/get-shit-done/workflows/resume-project.md
+@~/.claude/get-shit-done/references/text-mode.md
 </execution_context>
 
 <process>

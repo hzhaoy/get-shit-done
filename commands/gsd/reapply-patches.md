@@ -7,6 +7,10 @@ allowed-tools: Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion
 After a GSD update wipes and reinstalls files, this command merges user's previously saved local modifications back into the new version. Uses intelligent comparison to handle cases where the upstream file also changed.
 </purpose>
 
+<execution_context>
+@~/.claude/get-shit-done/references/text-mode.md
+</execution_context>
+
 <process>
 
 ## Step 1: Detect backed-up patches

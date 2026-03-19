@@ -23,6 +23,7 @@ Output: updated VALIDATION.md + generated test files.
 
 <execution_context>
 @~/.claude/get-shit-done/workflows/validate-phase.md
+@~/.claude/get-shit-done/references/text-mode.md
 </execution_context>
 
 <context>

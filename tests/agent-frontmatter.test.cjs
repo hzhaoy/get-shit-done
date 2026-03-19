@@ -181,3 +181,26 @@ describe('AGENT: required frontmatter fields', () => {
     });
   }
 });
+
+// ─── Text Mode Reference ─────────────────────────────────────────────────────
+
+describe('TEXT: text-mode reference wiring', () => {
+  test('text-mode.md reference file exists', () => {
+    const refPath = path.join(__dirname, '..', 'get-shit-done', 'references', 'text-mode.md');
+    assert.ok(fs.existsSync(refPath), 'references/text-mode.md must exist');
+  });
+
+  test('commands using AskUserQuestion reference text-mode.md', () => {
+    const commandsDir = path.join(__dirname, '..', 'commands', 'gsd');
+    const files = fs.readdirSync(commandsDir).filter(f => f.endsWith('.md'));
+    const missing = [];
+    for (const file of files) {
+      const content = fs.readFileSync(path.join(commandsDir, file), 'utf-8');
+      if (content.includes('AskUserQuestion') && !content.includes('text-mode.md')) {
+        missing.push(file);
+      }
+    }
+    assert.deepStrictEqual(missing, [],
+      `Commands using AskUserQuestion but missing text-mode.md reference: ${missing.join(', ')}`);
+  });
+});

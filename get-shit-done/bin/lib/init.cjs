@@ -47,6 +47,7 @@ function cmdInitExecutePhase(cwd, phase, raw) {
 
     // Config flags
     commit_docs: config.commit_docs,
+    text_mode: config.text_mode,
     parallelization: config.parallelization,
     context_window: config.context_window,
     branching_strategy: config.branching_strategy,
@@ -124,6 +125,7 @@ function cmdInitPlanPhase(cwd, phase, raw) {
     plan_checker_enabled: config.plan_checker,
     nyquist_validation_enabled: config.nyquist_validation,
     commit_docs: config.commit_docs,
+    text_mode: config.text_mode,
 
     // Phase info
     phase_found: !!phaseInfo,
@@ -220,6 +222,7 @@ function cmdInitNewProject(cwd, raw) {
 
     // Config
     commit_docs: config.commit_docs,
+    text_mode: config.text_mode,
 
     // Existing state
     project_exists: pathExistsInternal(cwd, '.planning/PROJECT.md'),
@@ -268,6 +271,7 @@ function cmdInitNewMilestone(cwd, raw) {
 
     // Config
     commit_docs: config.commit_docs,
+    text_mode: config.text_mode,
     research_enabled: config.research,
 
     // Current milestone
@@ -326,6 +330,7 @@ function cmdInitQuick(cwd, description, raw) {
 
     // Config
     commit_docs: config.commit_docs,
+    text_mode: config.text_mode,
     branch_name: quickBranchName,
 
     // Quick task info
@@ -377,6 +382,7 @@ function cmdInitResume(cwd, raw) {
 
     // Config
     commit_docs: config.commit_docs,
+    text_mode: config.text_mode,
   };
 
   output(result, raw);
@@ -397,6 +403,7 @@ function cmdInitVerifyWork(cwd, phase, raw) {
 
     // Config
     commit_docs: config.commit_docs,
+    text_mode: config.text_mode,
 
     // Phase info
     phase_found: !!phaseInfo,
@@ -462,6 +469,7 @@ function cmdInitPhaseOp(cwd, phase, raw) {
   const result = {
     // Config
     commit_docs: config.commit_docs,
+    text_mode: config.text_mode,
     brave_search: config.brave_search,
 
     // Phase info
@@ -551,6 +559,7 @@ function cmdInitTodos(cwd, area, raw) {
   const result = {
     // Config
     commit_docs: config.commit_docs,
+    text_mode: config.text_mode,
 
     // Timestamps
     date: now.toISOString().split('T')[0],
@@ -609,6 +618,7 @@ function cmdInitMilestoneOp(cwd, raw) {
   const result = {
     // Config
     commit_docs: config.commit_docs,
+    text_mode: config.text_mode,
 
     // Current milestone
     milestone_version: milestone.version,
@@ -651,6 +661,7 @@ function cmdInitMapCodebase(cwd, raw) {
 
     // Config
     commit_docs: config.commit_docs,
+    text_mode: config.text_mode,
     search_gitignored: config.search_gitignored,
     parallelization: config.parallelization,
 
@@ -785,6 +796,7 @@ function cmdInitProgress(cwd, raw) {
 
     // Config
     commit_docs: config.commit_docs,
+    text_mode: config.text_mode,
 
     // Milestone
     milestone_version: milestone.version,

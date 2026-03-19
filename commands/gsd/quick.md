@@ -33,6 +33,7 @@ Flags are composable: `--discuss --research --full` gives discussion + research 
 
 <execution_context>
 @~/.claude/get-shit-done/workflows/quick.md
+@~/.claude/get-shit-done/references/text-mode.md
 </execution_context>
 
 <context>

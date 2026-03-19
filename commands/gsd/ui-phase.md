@@ -22,6 +22,7 @@ Flow: Validate → Research UI → Verify UI-SPEC → Done
 <execution_context>
 @~/.claude/get-shit-done/workflows/ui-phase.md
 @~/.claude/get-shit-done/references/ui-brand.md
+@~/.claude/get-shit-done/references/text-mode.md
 </execution_context>
 
 <context>
