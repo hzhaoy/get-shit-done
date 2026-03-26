@@ -221,3 +221,156 @@ describe('Integration: PhaseRunner against real gsd-tools.cjs', () => {
     expect(events.some(e => e.type === GSDEventType.PhaseComplete)).toBe(true);
   });
 });
+
+// ─── Wave / phasePlanIndex Integration Tests ─────────────────────────────────
+
+/**
+ * Creates a temp `.planning/` directory with multi-wave plan files.
+ * - Plans 01 and 02 are wave 1 (parallel)
+ * - Plan 03 is wave 2 (depends on wave 1)
+ * - Plan 01 has a SUMMARY.md (marks it as completed)
+ */
+async function createMultiWavePlanningDir(): Promise<string> {
+  const tmpDir = await mkdtemp(join(tmpdir(), 'gsd-sdk-wave-int-'));
+
+  const planningDir = join(tmpDir, '.planning');
+  const phaseDir = join(planningDir, 'phases', '01-wave-test');
+  await mkdir(phaseDir, { recursive: true });
+
+  // config.json — with parallelization enabled
+  await writeFile(
+    join(planningDir, 'config.json'),
+    JSON.stringify({
+      model_profile: 'balanced',
+      commit_docs: false,
+      parallelization: true,
+      workflow: {
+        research: true,
+        verifier: true,
+        auto_advance: true,
+        skip_discuss: false,
+      },
+    }),
+  );
+
+  // ROADMAP.md
+  await writeFile(join(planningDir, 'ROADMAP.md'), '# Roadmap\n\n## Phase 01: Wave Test\n');
+
+  const planTemplate = (id: string, wave: number, dependsOn: string[] = []) => `---
+phase: "01"
+plan: "${id}"
+type: "feature"
+wave: ${wave}
+depends_on: [${dependsOn.map(d => `"${d}"`).join(', ')}]
+files_modified: ["src/${id}.ts"]
+autonomous: true
+requirements: []
+must_haves:
+  truths: ["${id} exists"]
+  artifacts: []
+  key_links: []
+---
+
+# Plan: ${id}
+
+<task type="code" name="Create ${id}" files="src/${id}.ts">
+  <read_first>none</read_first>
+  <action>Create ${id}</action>
+  <verify>File exists</verify>
+  <acceptance_criteria>
+    - File exists
+  </acceptance_criteria>
+  <done>Done</done>
+</task>
+`;
+
+  // Wave 1 plans (parallel)
+  await writeFile(join(phaseDir, '01-wave-test-01-PLAN.md'), planTemplate('01-wave-test-01', 1));
+  await writeFile(join(phaseDir, '01-wave-test-02-PLAN.md'), planTemplate('01-wave-test-02', 1));
+
+  // Wave 2 plan (depends on wave 1)
+  await writeFile(
+    join(phaseDir, '01-wave-test-03-PLAN.md'),
+    planTemplate('01-wave-test-03', 2, ['01-wave-test-01']),
+  );
+
+  // Summary for plan 01 — marks it as completed
+  await writeFile(
+    join(phaseDir, '01-wave-test-01-SUMMARY.md'),
+    `---\nresult: pass\nplan: "01-wave-test-01"\ncost_usd: 0.01\nduration_ms: 1000\n---\n\n# Summary\n\nAll tasks completed.\n`,
+  );
+
+  return tmpDir;
+}
+
+describe('Integration: phasePlanIndex and wave execution', () => {
+  let tmpDir: string;
+  let tools: GSDTools;
+
+  beforeAll(async () => {
+    tmpDir = await createMultiWavePlanningDir();
+    tools = new GSDTools({
+      projectDir: tmpDir,
+      gsdToolsPath: GSD_TOOLS_PATH,
+      timeoutMs: 10_000,
+    });
+  });
+
+  afterAll(async () => {
+    if (tmpDir) {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('phasePlanIndex returns typed PhasePlanIndex with correct wave grouping', async () => {
+    const index = await tools.phasePlanIndex('01');
+
+    // 3 plans total
+    expect(index.plans).toHaveLength(3);
+
+    // Wave grouping: wave 1 has 2 plans, wave 2 has 1
+    expect(index.waves['1']).toHaveLength(2);
+    expect(index.waves['1']).toContain('01-wave-test-01');
+    expect(index.waves['1']).toContain('01-wave-test-02');
+    expect(index.waves['2']).toHaveLength(1);
+    expect(index.waves['2']).toContain('01-wave-test-03');
+
+    // Incomplete: plan 01 has summary so only 02 and 03 are incomplete
+    expect(index.incomplete).toHaveLength(2);
+    expect(index.incomplete).toContain('01-wave-test-02');
+    expect(index.incomplete).toContain('01-wave-test-03');
+
+    // All autonomous → no checkpoints
+    expect(index.has_checkpoints).toBe(false);
+
+    // Phase ID correct
+    expect(index.phase).toBe('01');
+  });
+
+  it('phasePlanIndex marks has_summary correctly per plan', async () => {
+    const index = await tools.phasePlanIndex('01');
+
+    // Plan 01 has a SUMMARY.md on disk
+    const plan01 = index.plans.find(p => p.id === '01-wave-test-01');
+    expect(plan01).toBeDefined();
+    expect(plan01!.has_summary).toBe(true);
+
+    // Plans 02 and 03 have no summary
+    const plan02 = index.plans.find(p => p.id === '01-wave-test-02');
+    expect(plan02).toBeDefined();
+    expect(plan02!.has_summary).toBe(false);
+
+    const plan03 = index.plans.find(p => p.id === '01-wave-test-03');
+    expect(plan03).toBeDefined();
+    expect(plan03!.has_summary).toBe(false);
+  });
+
+  it('phasePlanIndex for nonexistent phase returns empty plans', async () => {
+    const index = await tools.phasePlanIndex('99');
+
+    expect(index.plans).toHaveLength(0);
+    expect(Object.keys(index.waves)).toHaveLength(0);
+    expect(index.incomplete).toHaveLength(0);
+    expect(index.has_checkpoints).toBe(false);
+  });
+});
