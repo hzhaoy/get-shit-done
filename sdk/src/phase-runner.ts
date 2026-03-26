@@ -15,6 +15,8 @@ import type {
   PlanResult,
   SessionOptions,
   ParsedPlan,
+  PhasePlanIndex,
+  PlanInfo,
 } from './types.js';
 import { PhaseStepType, PhaseType, GSDEventType } from './types.js';
 import type { GSDConfig } from './config.js';
@@ -187,7 +189,7 @@ export class PhaseRunner {
 
     // ── Step 4: Execute ──
     if (!halted) {
-      const executeResult = await this.runExecuteStep(phaseNumber, phaseOp, sessionOpts);
+      const executeResult = await this.runExecuteStep(phaseNumber, sessionOpts);
       steps.push(executeResult);
     }
 
@@ -196,7 +198,7 @@ export class PhaseRunner {
       if (!this.config.workflow.verifier) {
         this.logger?.debug('Skipping verify: config.workflow.verifier=false');
       } else {
-        const verifyResult = await this.runVerifyStep(phaseNumber, sessionOpts, callbacks);
+        const verifyResult = await this.runVerifyStep(phaseNumber, sessionOpts, callbacks, options);
         steps.push(verifyResult);
 
         // Check if verify resulted in a halt
@@ -325,12 +327,14 @@ export class PhaseRunner {
   }
 
   /**
-   * Run the execute step — iterates plans sequentially.
-   * Designed so S04 can swap in parallel execution.
+   * Run the execute step — uses phase-plan-index for wave-grouped parallel execution.
+   * Plans in the same wave run concurrently via Promise.allSettled().
+   * Waves execute sequentially (wave 1 completes before wave 2 starts).
+   * Respects config.parallelization: false to fall back to sequential execution.
+   * Filters out plans with has_summary: true (already completed).
    */
   private async runExecuteStep(
     phaseNumber: string,
-    phaseOp: PhaseOpInfo,
     sessionOpts: SessionOptions,
   ): Promise<PhaseStepResult> {
     const stepStart = Date.now();
@@ -343,11 +347,35 @@ export class PhaseRunner {
       step: PhaseStepType.Execute,
     });
 
-    const planResults: PlanResult[] = [];
-    const planCount = phaseOp.plan_count;
+    // Get the plan index from gsd-tools
+    let planIndex: PhasePlanIndex;
+    try {
+      planIndex = await this.tools.phasePlanIndex(phaseNumber);
+    } catch (err) {
+      const durationMs = Date.now() - stepStart;
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this.eventStream.emitEvent({
+        type: GSDEventType.PhaseStepComplete,
+        timestamp: new Date().toISOString(),
+        sessionId: '',
+        phaseNumber,
+        step: PhaseStepType.Execute,
+        success: false,
+        durationMs,
+        error: errorMsg,
+      });
+      return {
+        step: PhaseStepType.Execute,
+        success: false,
+        durationMs,
+        error: errorMsg,
+      };
+    }
 
-    if (planCount === 0) {
-      // No plans to execute — still a valid step result
+    // Filter to incomplete plans only (has_summary === false)
+    const incompletePlans = planIndex.plans.filter(p => !p.has_summary);
+
+    if (incompletePlans.length === 0) {
       const durationMs = Date.now() - stepStart;
       this.eventStream.emitEvent({
         type: GSDEventType.PhaseStepComplete,
@@ -366,34 +394,81 @@ export class PhaseRunner {
       };
     }
 
-    // Iterate plans sequentially — for S04 this becomes parallel
-    for (let i = 0; i < planCount; i++) {
-      try {
-        const phaseType = PhaseType.Execute;
-        const contextFiles = await this.contextEngine.resolveContextFiles(phaseType);
-        const prompt = await this.promptFactory.buildPrompt(phaseType, null, contextFiles);
+    const planResults: PlanResult[] = [];
 
-        const result = await runPhaseStepSession(
-          prompt,
-          PhaseStepType.Execute,
-          this.config,
-          sessionOpts,
-          this.eventStream,
-          { phase: phaseType, planName: `plan-${i + 1}` },
-        );
+    // Sequential fallback when parallelization is disabled
+    if (this.config.parallelization === false) {
+      for (const plan of incompletePlans) {
+        const result = await this.executeSinglePlan(phaseNumber, plan.id, sessionOpts);
         planResults.push(result);
-      } catch (err) {
-        planResults.push({
-          success: false,
+      }
+    } else {
+      // Group incomplete plans by wave, sort waves numerically
+      const waveMap = new Map<number, PlanInfo[]>();
+      for (const plan of incompletePlans) {
+        const existing = waveMap.get(plan.wave) ?? [];
+        existing.push(plan);
+        waveMap.set(plan.wave, existing);
+      }
+      const sortedWaves = [...waveMap.keys()].sort((a, b) => a - b);
+
+      for (const waveNum of sortedWaves) {
+        const wavePlans = waveMap.get(waveNum)!;
+        const wavePlanIds = wavePlans.map(p => p.id);
+
+        // Emit wave_start
+        this.eventStream.emitEvent({
+          type: GSDEventType.WaveStart,
+          timestamp: new Date().toISOString(),
           sessionId: '',
-          totalCostUsd: 0,
-          durationMs: 0,
-          usage: { inputTokens: 0, outputTokens: 0, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 },
-          numTurns: 0,
-          error: {
-            subtype: 'error_during_execution',
-            messages: [err instanceof Error ? err.message : String(err)],
-          },
+          phaseNumber,
+          waveNumber: waveNum,
+          planCount: wavePlans.length,
+          planIds: wavePlanIds,
+        });
+
+        const waveStart = Date.now();
+
+        // Execute all plans in this wave concurrently
+        const settled = await Promise.allSettled(
+          wavePlans.map(plan => this.executeSinglePlan(phaseNumber, plan.id, sessionOpts)),
+        );
+
+        // Map settled results to PlanResult[]
+        let successCount = 0;
+        let failureCount = 0;
+        for (const outcome of settled) {
+          if (outcome.status === 'fulfilled') {
+            planResults.push(outcome.value);
+            if (outcome.value.success) successCount++;
+            else failureCount++;
+          } else {
+            failureCount++;
+            planResults.push({
+              success: false,
+              sessionId: '',
+              totalCostUsd: 0,
+              durationMs: 0,
+              usage: { inputTokens: 0, outputTokens: 0, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 },
+              numTurns: 0,
+              error: {
+                subtype: 'error_during_execution',
+                messages: [outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason)],
+              },
+            });
+          }
+        }
+
+        // Emit wave_complete
+        this.eventStream.emitEvent({
+          type: GSDEventType.WaveComplete,
+          timestamp: new Date().toISOString(),
+          sessionId: '',
+          phaseNumber,
+          waveNumber: waveNum,
+          successCount,
+          failureCount,
+          durationMs: Date.now() - waveStart,
         });
       }
     }
@@ -420,16 +495,55 @@ export class PhaseRunner {
   }
 
   /**
-   * Run the verify step with gap closure routing.
+   * Execute a single plan by ID within the execute step.
+   */
+  private async executeSinglePlan(
+    phaseNumber: string,
+    planId: string,
+    sessionOpts: SessionOptions,
+  ): Promise<PlanResult> {
+    try {
+      const phaseType = PhaseType.Execute;
+      const contextFiles = await this.contextEngine.resolveContextFiles(phaseType);
+      const prompt = await this.promptFactory.buildPrompt(phaseType, null, contextFiles);
+
+      return await runPhaseStepSession(
+        prompt,
+        PhaseStepType.Execute,
+        this.config,
+        sessionOpts,
+        this.eventStream,
+        { phase: phaseType, planName: planId },
+      );
+    } catch (err) {
+      return {
+        success: false,
+        sessionId: '',
+        totalCostUsd: 0,
+        durationMs: 0,
+        usage: { inputTokens: 0, outputTokens: 0, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 },
+        numTurns: 0,
+        error: {
+          subtype: 'error_during_execution',
+          messages: [err instanceof Error ? err.message : String(err)],
+        },
+      };
+    }
+  }
+
+  /**
+   * Run the verify step with full gap closure cycle.
    * Verification outcome routing:
    * - passed → proceed to advance
    * - human_needed → invoke onVerificationReview callback
-   * - gaps_found → retry once (gap closure), then advance or stop
+   * - gaps_found → plan (create gap plans) → execute (run gap plans) → re-verify
+   * Gap closure retries are capped at configurable maxGapRetries (default 1).
    */
   private async runVerifyStep(
     phaseNumber: string,
     sessionOpts: SessionOptions,
     callbacks: HumanGateCallbacks,
+    options?: PhaseRunnerOptions,
   ): Promise<PhaseStepResult> {
     const stepStart = Date.now();
 
@@ -441,10 +555,11 @@ export class PhaseRunner {
       step: PhaseStepType.Verify,
     });
 
-    const maxGapRetries = 1;
+    const maxGapRetries = options?.maxGapRetries ?? 1;
     let gapRetryCount = 0;
     let lastResult: PlanResult | undefined;
     let outcome: VerificationOutcome = 'passed';
+    const allPlanResults: PlanResult[] = [];
 
     while (true) {
       try {
@@ -460,6 +575,7 @@ export class PhaseRunner {
           this.eventStream,
           { phase: phaseType },
         );
+        allPlanResults.push(lastResult);
       } catch (err) {
         const durationMs = Date.now() - stepStart;
         const errorMsg = err instanceof Error ? err.message : String(err);
@@ -480,6 +596,7 @@ export class PhaseRunner {
           success: false,
           durationMs,
           error: errorMsg,
+          planResults: allPlanResults.length > 0 ? allPlanResults : undefined,
         };
       }
 
@@ -496,7 +613,7 @@ export class PhaseRunner {
           step: PhaseStepType.Verify,
           success: lastResult.success,
           durationMs: Date.now() - stepStart,
-          planResults: [lastResult],
+          planResults: allPlanResults,
         });
 
         if (decision === 'accept') {
@@ -522,7 +639,7 @@ export class PhaseRunner {
             success: false,
             durationMs,
             error: 'halted_by_callback',
-            planResults: [lastResult],
+            planResults: allPlanResults,
           };
         }
       }
@@ -530,7 +647,40 @@ export class PhaseRunner {
       if (outcome === 'gaps_found') {
         if (gapRetryCount < maxGapRetries) {
           gapRetryCount++;
-          this.logger?.info(`Gap closure retry ${gapRetryCount}/${maxGapRetries} for phase ${phaseNumber}`);
+          this.logger?.info(`Gap closure attempt ${gapRetryCount}/${maxGapRetries} for phase ${phaseNumber}`);
+
+          // ── Gap closure cycle: plan → execute → re-verify ──
+
+          // 1. Run a plan step to create gap plans
+          try {
+            const planResult = await this.runStep(PhaseStepType.Plan, phaseNumber, sessionOpts);
+            if (planResult.planResults) {
+              allPlanResults.push(...planResult.planResults);
+            }
+          } catch (err) {
+            this.logger?.warn(`Gap closure plan step failed: ${err instanceof Error ? err.message : String(err)}`);
+            // Proceed to re-verify anyway
+          }
+
+          // 2. Re-query phase state to discover newly created gap plans
+          try {
+            await this.tools.initPhaseOp(phaseNumber);
+          } catch (err) {
+            this.logger?.warn(`Gap closure re-query failed, proceeding with stale state: ${err instanceof Error ? err.message : String(err)}`);
+          }
+
+          // 3. Execute gap plans via the wave-capable runExecuteStep
+          try {
+            const executeResult = await this.runExecuteStep(phaseNumber, sessionOpts);
+            if (executeResult.planResults) {
+              allPlanResults.push(...executeResult.planResults);
+            }
+          } catch (err) {
+            this.logger?.warn(`Gap closure execute step failed: ${err instanceof Error ? err.message : String(err)}`);
+            // Proceed to re-verify anyway
+          }
+
+          // 4. Continue the loop to re-verify
           continue;
         }
         // Exceeded gap closure retries — proceed
@@ -556,7 +706,7 @@ export class PhaseRunner {
       step: PhaseStepType.Verify,
       success: true,
       durationMs,
-      planResults: lastResult ? [lastResult] : [],
+      planResults: allPlanResults,
     };
   }
 

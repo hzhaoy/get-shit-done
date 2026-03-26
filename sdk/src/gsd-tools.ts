@@ -9,7 +9,7 @@ import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import type { PhaseOpInfo } from './types.js';
+import type { PhaseOpInfo, PhasePlanIndex } from './types.js';
 
 // ─── Error type ──────────────────────────────────────────────────────────────
 
@@ -202,5 +202,14 @@ export class GSDTools {
    */
   async stateBeginPhase(phaseNumber: string): Promise<unknown> {
     return this.exec('state', ['begin-phase', '--phase', phaseNumber]);
+  }
+
+  /**
+   * Get the plan index for a phase, grouping plans into dependency waves.
+   * Returns typed PhasePlanIndex with wave assignments and completion status.
+   */
+  async phasePlanIndex(phaseNumber: string): Promise<PhasePlanIndex> {
+    const result = await this.exec('phase-plan-index', [phaseNumber]);
+    return result as PhasePlanIndex;
   }
 }

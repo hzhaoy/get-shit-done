@@ -192,6 +192,8 @@ export enum GSDEventType {
   PhaseStepStart = 'phase_step_start',
   PhaseStepComplete = 'phase_step_complete',
   PhaseComplete = 'phase_complete',
+  WaveStart = 'wave_start',
+  WaveComplete = 'wave_complete',
 }
 
 /**
@@ -408,6 +410,55 @@ export interface GSDPhaseCompleteEvent extends GSDEventBase {
   stepsCompleted: number;
 }
 
+// ─── S04: Plan index & wave event types ─────────────────────────────────────
+
+/**
+ * Info about a single plan within a phase, as returned by phase-plan-index.
+ */
+export interface PlanInfo {
+  id: string;
+  wave: number;
+  autonomous: boolean;
+  objective: string | null;
+  files_modified: string[];
+  task_count: number;
+  has_summary: boolean;
+}
+
+/**
+ * Structured plan index for a phase, grouping plans into dependency waves.
+ */
+export interface PhasePlanIndex {
+  phase: string;
+  plans: PlanInfo[];
+  waves: Record<string, string[]>;
+  incomplete: string[];
+  has_checkpoints: boolean;
+}
+
+/**
+ * Wave execution started — emitted before concurrent plans launch.
+ */
+export interface GSDWaveStartEvent extends GSDEventBase {
+  type: GSDEventType.WaveStart;
+  phaseNumber: string;
+  waveNumber: number;
+  planCount: number;
+  planIds: string[];
+}
+
+/**
+ * Wave execution completed — emitted after all plans in a wave settle.
+ */
+export interface GSDWaveCompleteEvent extends GSDEventBase {
+  type: GSDEventType.WaveComplete;
+  phaseNumber: string;
+  waveNumber: number;
+  successCount: number;
+  failureCount: number;
+  durationMs: number;
+}
+
 /**
  * Discriminated union of all GSD events.
  */
@@ -431,7 +482,9 @@ export type GSDEvent =
   | GSDPhaseStartEvent
   | GSDPhaseStepStartEvent
   | GSDPhaseStepCompleteEvent
-  | GSDPhaseCompleteEvent;
+  | GSDPhaseCompleteEvent
+  | GSDWaveStartEvent
+  | GSDWaveCompleteEvent;
 
 /**
  * Transport handler interface for consuming GSD events.
@@ -559,4 +612,6 @@ export interface PhaseRunnerOptions {
   maxBudgetPerStep?: number;
   maxTurnsPerStep?: number;
   model?: string;
+  /** Maximum gap closure retries when verification finds gaps. Default: 1. */
+  maxGapRetries?: number;
 }

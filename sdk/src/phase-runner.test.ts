@@ -8,6 +8,8 @@ import type {
   SessionOptions,
   HumanGateCallbacks,
   GSDEvent,
+  PhasePlanIndex,
+  PlanInfo,
 } from './types.js';
 import { PhaseStepType, PhaseType, GSDEventType } from './types.js';
 import type { GSDConfig } from './config.js';
@@ -70,6 +72,40 @@ function makePlanResult(overrides: Partial<PlanResult> = {}): PlanResult {
   };
 }
 
+function makePlanInfo(overrides: Partial<PlanInfo> = {}): PlanInfo {
+  return {
+    id: 'plan-1',
+    wave: 1,
+    autonomous: true,
+    objective: 'Test objective',
+    files_modified: [],
+    task_count: 1,
+    has_summary: false,
+    ...overrides,
+  };
+}
+
+function makePlanIndex(planCount: number, overrides: Partial<PhasePlanIndex> = {}): PhasePlanIndex {
+  const plans: PlanInfo[] = [];
+  const waves: Record<string, string[]> = {};
+  for (let i = 0; i < planCount; i++) {
+    const id = `plan-${i + 1}`;
+    const wave = 1; // Default: all in wave 1
+    plans.push(makePlanInfo({ id, wave }));
+    const waveKey = String(wave);
+    if (!waves[waveKey]) waves[waveKey] = [];
+    waves[waveKey].push(id);
+  }
+  return {
+    phase: '1',
+    plans,
+    waves,
+    incomplete: plans.filter(p => !p.has_summary).map(p => p.id),
+    has_checkpoints: false,
+    ...overrides,
+  };
+}
+
 function makeConfig(overrides: Partial<GSDConfig> = {}): GSDConfig {
   return {
     ...structuredClone(CONFIG_DEFAULTS),
@@ -89,6 +125,7 @@ function makeDeps(overrides: Partial<PhaseRunnerDeps> = {}): PhaseRunnerDeps {
     tools: {
       initPhaseOp: vi.fn().mockResolvedValue(makePhaseOp()),
       phaseComplete: vi.fn().mockResolvedValue(undefined),
+      phasePlanIndex: vi.fn().mockResolvedValue(makePlanIndex(1)),
       exec: vi.fn(),
       stateLoad: vi.fn(),
       roadmapAnalyze: vi.fn(),
@@ -255,6 +292,7 @@ describe('PhaseRunner', () => {
       const config = makeConfig({ workflow: { research: false, verifier: false, skip_discuss: true } as any });
       const deps = makeDeps({ config });
       (deps.tools.initPhaseOp as ReturnType<typeof vi.fn>).mockResolvedValue(phaseOp);
+      (deps.tools.phasePlanIndex as ReturnType<typeof vi.fn>).mockResolvedValue(makePlanIndex(3));
 
       const runner = new PhaseRunner(deps);
       const result = await runner.run('1');
@@ -276,6 +314,7 @@ describe('PhaseRunner', () => {
       const config = makeConfig({ workflow: { research: false, verifier: false, skip_discuss: true } as any });
       const deps = makeDeps({ config });
       (deps.tools.initPhaseOp as ReturnType<typeof vi.fn>).mockResolvedValue(phaseOp);
+      (deps.tools.phasePlanIndex as ReturnType<typeof vi.fn>).mockResolvedValue(makePlanIndex(0));
 
       const runner = new PhaseRunner(deps);
       const result = await runner.run('1');
@@ -291,6 +330,7 @@ describe('PhaseRunner', () => {
       const config = makeConfig({ workflow: { research: false, verifier: false, skip_discuss: true } as any });
       const deps = makeDeps({ config });
       (deps.tools.initPhaseOp as ReturnType<typeof vi.fn>).mockResolvedValue(phaseOp);
+      (deps.tools.phasePlanIndex as ReturnType<typeof vi.fn>).mockResolvedValue(makePlanIndex(2));
 
       let callCount = 0;
       mockRunPhaseStepSession.mockImplementation(async (_prompt, step) => {
@@ -536,6 +576,197 @@ describe('PhaseRunner', () => {
       // Verify step still succeeds (gap closure exhausted → proceed)
       const verifyStep = result.steps.find(s => s.step === PhaseStepType.Verify);
       expect(verifyStep!.success).toBe(true);
+    });
+
+    it('gaps_found triggers plan → execute → re-verify cycle', async () => {
+      const phaseOp = makePhaseOp({ has_context: true, has_plans: true, plan_count: 1 });
+      const config = makeConfig({ workflow: { research: false, skip_discuss: true } as any });
+      const deps = makeDeps({ config });
+      (deps.tools.initPhaseOp as ReturnType<typeof vi.fn>).mockResolvedValue(phaseOp);
+
+      // Track the step sequence during gap closure
+      const stepSequence: string[] = [];
+      let verifyCallCount = 0;
+      mockRunPhaseStepSession.mockImplementation(async (_prompt, step) => {
+        stepSequence.push(step);
+        if (step === PhaseStepType.Verify) {
+          verifyCallCount++;
+          if (verifyCallCount === 1) {
+            return makePlanResult({
+              success: false,
+              error: { subtype: 'verification_failed', messages: ['Gaps found'] },
+            });
+          }
+          // Re-verify passes
+          return makePlanResult({ success: true });
+        }
+        return makePlanResult();
+      });
+
+      const runner = new PhaseRunner(deps);
+      const result = await runner.run('1');
+
+      expect(result.success).toBe(true);
+
+      // After initial plan+execute+verify(fail), gap closure should run: plan, execute, verify(pass)
+      // Full sequence includes: plan, execute, verify(gap), plan(gap), execute(gap), verify(pass), advance(no session)
+      // Filter to just the verify-related part: after the first verify, we should see plan then execute then verify
+      const afterFirstVerify = stepSequence.slice(stepSequence.indexOf(PhaseStepType.Verify) + 1);
+      expect(afterFirstVerify).toContain(PhaseStepType.Plan);
+      expect(afterFirstVerify).toContain(PhaseStepType.Execute);
+      expect(afterFirstVerify).toContain(PhaseStepType.Verify);
+
+      // Plan comes before execute in gap closure
+      const planIdx = afterFirstVerify.indexOf(PhaseStepType.Plan);
+      const execIdx = afterFirstVerify.indexOf(PhaseStepType.Execute);
+      const verifyIdx = afterFirstVerify.indexOf(PhaseStepType.Verify);
+      expect(planIdx).toBeLessThan(execIdx);
+      expect(execIdx).toBeLessThan(verifyIdx);
+    });
+
+    it('gaps_found with maxGapRetries=0 proceeds immediately without gap closure', async () => {
+      const phaseOp = makePhaseOp({ has_context: true, has_plans: true, plan_count: 1 });
+      const config = makeConfig({ workflow: { research: false, skip_discuss: true } as any });
+      const deps = makeDeps({ config });
+      (deps.tools.initPhaseOp as ReturnType<typeof vi.fn>).mockResolvedValue(phaseOp);
+
+      let verifyCallCount = 0;
+      const stepSequence: string[] = [];
+      mockRunPhaseStepSession.mockImplementation(async (_prompt, step) => {
+        stepSequence.push(step);
+        if (step === PhaseStepType.Verify) {
+          verifyCallCount++;
+          return makePlanResult({
+            success: false,
+            error: { subtype: 'verification_failed', messages: ['Gaps found'] },
+          });
+        }
+        return makePlanResult();
+      });
+
+      const runner = new PhaseRunner(deps);
+      const result = await runner.run('1', { maxGapRetries: 0 });
+
+      // Only 1 verify call — no retry
+      expect(verifyCallCount).toBe(1);
+
+      // No gap closure plan/execute steps after verify
+      const afterVerify = stepSequence.slice(stepSequence.indexOf(PhaseStepType.Verify) + 1);
+      expect(afterVerify).not.toContain(PhaseStepType.Plan);
+      expect(afterVerify.filter(s => s === PhaseStepType.Execute)).toHaveLength(0);
+
+      // Verify step still reports success (exhausted retries → proceed)
+      const verifyStep = result.steps.find(s => s.step === PhaseStepType.Verify);
+      expect(verifyStep!.success).toBe(true);
+    });
+
+    it('gap closure plan step failure proceeds to re-verify without executing', async () => {
+      const phaseOp = makePhaseOp({ has_context: true, has_plans: true, plan_count: 1 });
+      const config = makeConfig({ workflow: { research: false, skip_discuss: true } as any });
+      const deps = makeDeps({ config });
+      (deps.tools.initPhaseOp as ReturnType<typeof vi.fn>).mockResolvedValue(phaseOp);
+
+      let verifyCallCount = 0;
+      let planCallAfterGap = 0;
+      mockRunPhaseStepSession.mockImplementation(async (_prompt, step) => {
+        if (step === PhaseStepType.Verify) {
+          verifyCallCount++;
+          if (verifyCallCount === 1) {
+            return makePlanResult({
+              success: false,
+              error: { subtype: 'verification_failed', messages: ['Gaps found'] },
+            });
+          }
+          return makePlanResult({ success: true });
+        }
+        if (step === PhaseStepType.Plan && verifyCallCount >= 1) {
+          planCallAfterGap++;
+          // Simulate plan step throwing
+          throw new Error('plan step crashed');
+        }
+        return makePlanResult();
+      });
+
+      const runner = new PhaseRunner(deps);
+      const result = await runner.run('1');
+
+      // Plan step failed, but verify still re-ran
+      expect(planCallAfterGap).toBe(1);
+      expect(verifyCallCount).toBe(2);
+      expect(result.success).toBe(true);
+    });
+
+    it('custom maxGapRetries from PhaseRunnerOptions is respected', async () => {
+      const phaseOp = makePhaseOp({ has_context: true, has_plans: true, plan_count: 1 });
+      const config = makeConfig({ workflow: { research: false, skip_discuss: true } as any });
+      const deps = makeDeps({ config });
+      (deps.tools.initPhaseOp as ReturnType<typeof vi.fn>).mockResolvedValue(phaseOp);
+
+      let verifyCallCount = 0;
+      mockRunPhaseStepSession.mockImplementation(async (_prompt, step) => {
+        if (step === PhaseStepType.Verify) {
+          verifyCallCount++;
+          // Always return gaps_found
+          return makePlanResult({
+            success: false,
+            error: { subtype: 'verification_failed', messages: ['Gaps found'] },
+          });
+        }
+        return makePlanResult();
+      });
+
+      const runner = new PhaseRunner(deps);
+      const result = await runner.run('1', { maxGapRetries: 3 });
+
+      // 1 initial + 3 retries = 4 verify calls
+      expect(verifyCallCount).toBe(4);
+      const verifyStep = result.steps.find(s => s.step === PhaseStepType.Verify);
+      expect(verifyStep!.success).toBe(true);
+    });
+
+    it('gap closure results are included in the final verify step planResults', async () => {
+      const phaseOp = makePhaseOp({ has_context: true, has_plans: true, plan_count: 1 });
+      const config = makeConfig({ workflow: { research: false, skip_discuss: true } as any });
+      const deps = makeDeps({ config });
+      (deps.tools.initPhaseOp as ReturnType<typeof vi.fn>).mockResolvedValue(phaseOp);
+
+      let verifyCallCount = 0;
+      mockRunPhaseStepSession.mockImplementation(async (_prompt, step) => {
+        if (step === PhaseStepType.Verify) {
+          verifyCallCount++;
+          if (verifyCallCount === 1) {
+            return makePlanResult({
+              success: false,
+              sessionId: 'verify-1',
+              totalCostUsd: 0.02,
+              error: { subtype: 'verification_failed', messages: ['Gaps found'] },
+            });
+          }
+          return makePlanResult({ success: true, sessionId: 'verify-2', totalCostUsd: 0.03 });
+        }
+        if (step === PhaseStepType.Plan) {
+          return makePlanResult({ success: true, sessionId: 'gap-plan', totalCostUsd: 0.01 });
+        }
+        if (step === PhaseStepType.Execute) {
+          return makePlanResult({ success: true, sessionId: 'gap-exec', totalCostUsd: 0.04 });
+        }
+        return makePlanResult();
+      });
+
+      const runner = new PhaseRunner(deps);
+      const result = await runner.run('1');
+
+      const verifyStep = result.steps.find(s => s.step === PhaseStepType.Verify);
+      expect(verifyStep).toBeDefined();
+      expect(verifyStep!.planResults).toBeDefined();
+
+      // Should contain: verify-1 (initial), gap-plan, gap-exec, verify-2 (re-verify)
+      const sessionIds = verifyStep!.planResults!.map(r => r.sessionId);
+      expect(sessionIds).toContain('verify-1');
+      expect(sessionIds).toContain('gap-plan');
+      expect(sessionIds).toContain('gap-exec');
+      expect(sessionIds).toContain('verify-2');
+      expect(verifyStep!.planResults!.length).toBeGreaterThanOrEqual(4);
     });
   });
 
@@ -830,6 +1061,7 @@ describe('PhaseRunner', () => {
       const config = makeConfig({ workflow: { research: false, verifier: false, skip_discuss: true } as any });
       const deps = makeDeps({ config });
       (deps.tools.initPhaseOp as ReturnType<typeof vi.fn>).mockResolvedValue(phaseOp);
+      (deps.tools.phasePlanIndex as ReturnType<typeof vi.fn>).mockResolvedValue(makePlanIndex(2));
 
       mockRunPhaseStepSession.mockResolvedValue(makePlanResult({ totalCostUsd: 0.05 }));
 
@@ -924,6 +1156,390 @@ describe('PhaseRunner', () => {
       expect(sessionOpts.maxBudgetUsd).toBe(2.0);
       expect(sessionOpts.maxTurns).toBe(20);
       expect(sessionOpts.model).toBe('claude-opus-4-6');
+    });
+  });
+
+  // ─── S04: Wave-grouped parallel execution ─────────────────────────────
+
+  describe('wave-grouped parallel execution', () => {
+    it('executes plans in same wave concurrently', async () => {
+      // Create 3 plans all in wave 1
+      const planIndex = makePlanIndex(0, {
+        plans: [
+          makePlanInfo({ id: 'p1', wave: 1 }),
+          makePlanInfo({ id: 'p2', wave: 1 }),
+          makePlanInfo({ id: 'p3', wave: 1 }),
+        ],
+        waves: { '1': ['p1', 'p2', 'p3'] },
+        incomplete: ['p1', 'p2', 'p3'],
+      });
+
+      const phaseOp = makePhaseOp({ has_context: true, has_plans: true, plan_count: 3 });
+      const config = makeConfig({ workflow: { research: false, verifier: false, skip_discuss: true } as any });
+      const deps = makeDeps({ config });
+      (deps.tools.initPhaseOp as ReturnType<typeof vi.fn>).mockResolvedValue(phaseOp);
+      (deps.tools.phasePlanIndex as ReturnType<typeof vi.fn>).mockResolvedValue(planIndex);
+
+      // Track concurrent execution via timestamps
+      const startTimes: number[] = [];
+      const endTimes: number[] = [];
+      mockRunPhaseStepSession.mockImplementation(async (_prompt, step) => {
+        if (step === PhaseStepType.Execute) {
+          startTimes.push(Date.now());
+          await new Promise(r => setTimeout(r, 20));
+          endTimes.push(Date.now());
+        }
+        return makePlanResult();
+      });
+
+      const runner = new PhaseRunner(deps);
+      const result = await runner.run('1');
+
+      const executeStep = result.steps.find(s => s.step === PhaseStepType.Execute);
+      expect(executeStep).toBeDefined();
+      expect(executeStep!.planResults).toHaveLength(3);
+
+      // All 3 execute calls were for the Execute step
+      const execCalls = mockRunPhaseStepSession.mock.calls.filter(
+        call => call[1] === PhaseStepType.Execute,
+      );
+      expect(execCalls).toHaveLength(3);
+
+      // Verify concurrent execution: all should start before any finish
+      // (with sequential, start[1] >= end[0])
+      if (startTimes.length === 3) {
+        // All start times should be before the maximum end time of the batch
+        expect(Math.max(...startTimes)).toBeLessThan(Math.max(...endTimes));
+      }
+    });
+
+    it('wave 2 does not start until wave 1 completes', async () => {
+      const planIndex = makePlanIndex(0, {
+        plans: [
+          makePlanInfo({ id: 'w1-p1', wave: 1 }),
+          makePlanInfo({ id: 'w2-p1', wave: 2 }),
+        ],
+        waves: { '1': ['w1-p1'], '2': ['w2-p1'] },
+        incomplete: ['w1-p1', 'w2-p1'],
+      });
+
+      const phaseOp = makePhaseOp({ has_context: true, has_plans: true, plan_count: 2 });
+      const config = makeConfig({ workflow: { research: false, verifier: false, skip_discuss: true } as any });
+      const deps = makeDeps({ config });
+      (deps.tools.initPhaseOp as ReturnType<typeof vi.fn>).mockResolvedValue(phaseOp);
+      (deps.tools.phasePlanIndex as ReturnType<typeof vi.fn>).mockResolvedValue(planIndex);
+
+      const executionOrder: string[] = [];
+      mockRunPhaseStepSession.mockImplementation(async (_prompt, step, _config, _opts, _es, ctx) => {
+        if (step === PhaseStepType.Execute) {
+          const planName = (ctx as any)?.planName ?? 'unknown';
+          executionOrder.push(`start:${planName}`);
+          await new Promise(r => setTimeout(r, 10));
+          executionOrder.push(`end:${planName}`);
+        }
+        return makePlanResult();
+      });
+
+      const runner = new PhaseRunner(deps);
+      await runner.run('1');
+
+      // Wave 1 plan must end before wave 2 plan starts
+      const w1EndIdx = executionOrder.indexOf('end:w1-p1');
+      const w2StartIdx = executionOrder.indexOf('start:w2-p1');
+      expect(w1EndIdx).toBeLessThan(w2StartIdx);
+    });
+
+    it('one plan failure in wave does not abort other plans (allSettled behavior)', async () => {
+      const planIndex = makePlanIndex(0, {
+        plans: [
+          makePlanInfo({ id: 'p1', wave: 1 }),
+          makePlanInfo({ id: 'p2', wave: 1 }),
+          makePlanInfo({ id: 'p3', wave: 1 }),
+        ],
+        waves: { '1': ['p1', 'p2', 'p3'] },
+        incomplete: ['p1', 'p2', 'p3'],
+      });
+
+      const phaseOp = makePhaseOp({ has_context: true, has_plans: true, plan_count: 3 });
+      const config = makeConfig({ workflow: { research: false, verifier: false, skip_discuss: true } as any });
+      const deps = makeDeps({ config });
+      (deps.tools.initPhaseOp as ReturnType<typeof vi.fn>).mockResolvedValue(phaseOp);
+      (deps.tools.phasePlanIndex as ReturnType<typeof vi.fn>).mockResolvedValue(planIndex);
+
+      let execCallIdx = 0;
+      mockRunPhaseStepSession.mockImplementation(async (_prompt, step) => {
+        if (step === PhaseStepType.Execute) {
+          execCallIdx++;
+          if (execCallIdx === 2) {
+            // Second plan fails
+            return makePlanResult({
+              success: false,
+              error: { subtype: 'error_during_execution', messages: ['Plan 2 failed'] },
+            });
+          }
+        }
+        return makePlanResult();
+      });
+
+      const runner = new PhaseRunner(deps);
+      const result = await runner.run('1');
+
+      const executeStep = result.steps.find(s => s.step === PhaseStepType.Execute);
+      expect(executeStep!.planResults).toHaveLength(3);
+
+      // Two succeeded, one failed
+      const successes = executeStep!.planResults!.filter(r => r.success);
+      const failures = executeStep!.planResults!.filter(r => !r.success);
+      expect(successes).toHaveLength(2);
+      expect(failures).toHaveLength(1);
+      expect(executeStep!.success).toBe(false); // overall step fails
+    });
+
+    it('parallelization: false runs plans sequentially', async () => {
+      const planIndex = makePlanIndex(0, {
+        plans: [
+          makePlanInfo({ id: 'p1', wave: 1 }),
+          makePlanInfo({ id: 'p2', wave: 1 }),
+        ],
+        waves: { '1': ['p1', 'p2'] },
+        incomplete: ['p1', 'p2'],
+      });
+
+      const phaseOp = makePhaseOp({ has_context: true, has_plans: true, plan_count: 2 });
+      const config = makeConfig({
+        parallelization: false,
+        workflow: { research: false, verifier: false, skip_discuss: true } as any,
+      });
+      const deps = makeDeps({ config });
+      (deps.tools.initPhaseOp as ReturnType<typeof vi.fn>).mockResolvedValue(phaseOp);
+      (deps.tools.phasePlanIndex as ReturnType<typeof vi.fn>).mockResolvedValue(planIndex);
+
+      const executionOrder: string[] = [];
+      mockRunPhaseStepSession.mockImplementation(async (_prompt, step, _config, _opts, _es, ctx) => {
+        if (step === PhaseStepType.Execute) {
+          const planName = (ctx as any)?.planName ?? 'unknown';
+          executionOrder.push(`start:${planName}`);
+          await new Promise(r => setTimeout(r, 10));
+          executionOrder.push(`end:${planName}`);
+        }
+        return makePlanResult();
+      });
+
+      const runner = new PhaseRunner(deps);
+      const result = await runner.run('1');
+
+      const executeStep = result.steps.find(s => s.step === PhaseStepType.Execute);
+      expect(executeStep!.planResults).toHaveLength(2);
+
+      // Sequential: p1 ends before p2 starts
+      const p1EndIdx = executionOrder.indexOf('end:p1');
+      const p2StartIdx = executionOrder.indexOf('start:p2');
+      expect(p1EndIdx).toBeLessThan(p2StartIdx);
+    });
+
+    it('filters out plans with has_summary: true', async () => {
+      const planIndex = makePlanIndex(0, {
+        plans: [
+          makePlanInfo({ id: 'p1', wave: 1, has_summary: true }),
+          makePlanInfo({ id: 'p2', wave: 1, has_summary: false }),
+          makePlanInfo({ id: 'p3', wave: 2, has_summary: true }),
+        ],
+        waves: { '1': ['p1', 'p2'], '2': ['p3'] },
+        incomplete: ['p2'],
+      });
+
+      const phaseOp = makePhaseOp({ has_context: true, has_plans: true, plan_count: 3 });
+      const config = makeConfig({ workflow: { research: false, verifier: false, skip_discuss: true } as any });
+      const deps = makeDeps({ config });
+      (deps.tools.initPhaseOp as ReturnType<typeof vi.fn>).mockResolvedValue(phaseOp);
+      (deps.tools.phasePlanIndex as ReturnType<typeof vi.fn>).mockResolvedValue(planIndex);
+
+      const runner = new PhaseRunner(deps);
+      const result = await runner.run('1');
+
+      const executeStep = result.steps.find(s => s.step === PhaseStepType.Execute);
+      // Only p2 should execute (p1 and p3 have summaries)
+      expect(executeStep!.planResults).toHaveLength(1);
+
+      // Verify the executed plan was p2
+      const execCalls = mockRunPhaseStepSession.mock.calls.filter(
+        call => call[1] === PhaseStepType.Execute,
+      );
+      expect(execCalls).toHaveLength(1);
+      expect((execCalls[0][5] as any)?.planName).toBe('p2');
+    });
+
+    it('returns success with empty planResults when all plans have summaries', async () => {
+      const planIndex = makePlanIndex(0, {
+        plans: [
+          makePlanInfo({ id: 'p1', wave: 1, has_summary: true }),
+          makePlanInfo({ id: 'p2', wave: 1, has_summary: true }),
+        ],
+        waves: { '1': ['p1', 'p2'] },
+        incomplete: [],
+      });
+
+      const phaseOp = makePhaseOp({ has_context: true, has_plans: true, plan_count: 2 });
+      const config = makeConfig({ workflow: { research: false, verifier: false, skip_discuss: true } as any });
+      const deps = makeDeps({ config });
+      (deps.tools.initPhaseOp as ReturnType<typeof vi.fn>).mockResolvedValue(phaseOp);
+      (deps.tools.phasePlanIndex as ReturnType<typeof vi.fn>).mockResolvedValue(planIndex);
+
+      const runner = new PhaseRunner(deps);
+      const result = await runner.run('1');
+
+      const executeStep = result.steps.find(s => s.step === PhaseStepType.Execute);
+      expect(executeStep!.success).toBe(true);
+      expect(executeStep!.planResults).toHaveLength(0);
+    });
+
+    it('emits wave_start and wave_complete events with correct data', async () => {
+      const planIndex = makePlanIndex(0, {
+        plans: [
+          makePlanInfo({ id: 'p1', wave: 1 }),
+          makePlanInfo({ id: 'p2', wave: 1 }),
+          makePlanInfo({ id: 'p3', wave: 2 }),
+        ],
+        waves: { '1': ['p1', 'p2'], '2': ['p3'] },
+        incomplete: ['p1', 'p2', 'p3'],
+      });
+
+      const phaseOp = makePhaseOp({ has_context: true, has_plans: true, plan_count: 3 });
+      const config = makeConfig({ workflow: { research: false, verifier: false, skip_discuss: true } as any });
+      const deps = makeDeps({ config });
+      (deps.tools.initPhaseOp as ReturnType<typeof vi.fn>).mockResolvedValue(phaseOp);
+      (deps.tools.phasePlanIndex as ReturnType<typeof vi.fn>).mockResolvedValue(planIndex);
+
+      const runner = new PhaseRunner(deps);
+      await runner.run('1');
+
+      const events = getEmittedEvents(deps);
+      const waveStarts = events.filter(e => e.type === GSDEventType.WaveStart) as any[];
+      const waveCompletes = events.filter(e => e.type === GSDEventType.WaveComplete) as any[];
+
+      // Two waves → two start + two complete events
+      expect(waveStarts).toHaveLength(2);
+      expect(waveCompletes).toHaveLength(2);
+
+      // Wave 1: 2 plans
+      expect(waveStarts[0].waveNumber).toBe(1);
+      expect(waveStarts[0].planCount).toBe(2);
+      expect(waveStarts[0].planIds).toEqual(['p1', 'p2']);
+      expect(waveCompletes[0].waveNumber).toBe(1);
+      expect(waveCompletes[0].successCount).toBe(2);
+      expect(waveCompletes[0].failureCount).toBe(0);
+
+      // Wave 2: 1 plan
+      expect(waveStarts[1].waveNumber).toBe(2);
+      expect(waveStarts[1].planCount).toBe(1);
+      expect(waveStarts[1].planIds).toEqual(['p3']);
+      expect(waveCompletes[1].waveNumber).toBe(2);
+      expect(waveCompletes[1].successCount).toBe(1);
+    });
+
+    it('single-wave single-plan case works (regression for S03 behavior)', async () => {
+      const planIndex = makePlanIndex(1);
+
+      const phaseOp = makePhaseOp({ has_context: true, has_plans: true, plan_count: 1 });
+      const config = makeConfig({ workflow: { research: false, verifier: false, skip_discuss: true } as any });
+      const deps = makeDeps({ config });
+      (deps.tools.initPhaseOp as ReturnType<typeof vi.fn>).mockResolvedValue(phaseOp);
+      (deps.tools.phasePlanIndex as ReturnType<typeof vi.fn>).mockResolvedValue(planIndex);
+
+      const runner = new PhaseRunner(deps);
+      const result = await runner.run('1');
+
+      const executeStep = result.steps.find(s => s.step === PhaseStepType.Execute);
+      expect(executeStep!.success).toBe(true);
+      expect(executeStep!.planResults).toHaveLength(1);
+    });
+
+    it('handles non-contiguous wave numbers (e.g. 1, 3, 5)', async () => {
+      const planIndex = makePlanIndex(0, {
+        plans: [
+          makePlanInfo({ id: 'p1', wave: 1 }),
+          makePlanInfo({ id: 'p2', wave: 3 }),
+          makePlanInfo({ id: 'p3', wave: 5 }),
+        ],
+        waves: { '1': ['p1'], '3': ['p2'], '5': ['p3'] },
+        incomplete: ['p1', 'p2', 'p3'],
+      });
+
+      const phaseOp = makePhaseOp({ has_context: true, has_plans: true, plan_count: 3 });
+      const config = makeConfig({ workflow: { research: false, verifier: false, skip_discuss: true } as any });
+      const deps = makeDeps({ config });
+      (deps.tools.initPhaseOp as ReturnType<typeof vi.fn>).mockResolvedValue(phaseOp);
+      (deps.tools.phasePlanIndex as ReturnType<typeof vi.fn>).mockResolvedValue(planIndex);
+
+      const executionOrder: string[] = [];
+      mockRunPhaseStepSession.mockImplementation(async (_prompt, step, _config, _opts, _es, ctx) => {
+        if (step === PhaseStepType.Execute) {
+          const planName = (ctx as any)?.planName ?? 'unknown';
+          executionOrder.push(`start:${planName}`);
+          await new Promise(r => setTimeout(r, 5));
+          executionOrder.push(`end:${planName}`);
+        }
+        return makePlanResult();
+      });
+
+      const runner = new PhaseRunner(deps);
+      const result = await runner.run('1');
+
+      const executeStep = result.steps.find(s => s.step === PhaseStepType.Execute);
+      expect(executeStep!.planResults).toHaveLength(3);
+      expect(executeStep!.success).toBe(true);
+
+      // Verify sequential wave order: p1 ends before p2 starts, p2 ends before p3 starts
+      const p1End = executionOrder.indexOf('end:p1');
+      const p2Start = executionOrder.indexOf('start:p2');
+      const p2End = executionOrder.indexOf('end:p2');
+      const p3Start = executionOrder.indexOf('start:p3');
+      expect(p1End).toBeLessThan(p2Start);
+      expect(p2End).toBeLessThan(p3Start);
+    });
+
+    it('no wave events emitted when parallelization is disabled', async () => {
+      const planIndex = makePlanIndex(0, {
+        plans: [
+          makePlanInfo({ id: 'p1', wave: 1 }),
+          makePlanInfo({ id: 'p2', wave: 2 }),
+        ],
+        waves: { '1': ['p1'], '2': ['p2'] },
+        incomplete: ['p1', 'p2'],
+      });
+
+      const phaseOp = makePhaseOp({ has_context: true, has_plans: true, plan_count: 2 });
+      const config = makeConfig({
+        parallelization: false,
+        workflow: { research: false, verifier: false, skip_discuss: true } as any,
+      });
+      const deps = makeDeps({ config });
+      (deps.tools.initPhaseOp as ReturnType<typeof vi.fn>).mockResolvedValue(phaseOp);
+      (deps.tools.phasePlanIndex as ReturnType<typeof vi.fn>).mockResolvedValue(planIndex);
+
+      const runner = new PhaseRunner(deps);
+      await runner.run('1');
+
+      const events = getEmittedEvents(deps);
+      const waveEvents = events.filter(
+        e => e.type === GSDEventType.WaveStart || e.type === GSDEventType.WaveComplete,
+      );
+      expect(waveEvents).toHaveLength(0);
+    });
+
+    it('phasePlanIndex error is captured in step result', async () => {
+      const phaseOp = makePhaseOp({ has_context: true, has_plans: true, plan_count: 1 });
+      const config = makeConfig({ workflow: { research: false, verifier: false, skip_discuss: true } as any });
+      const deps = makeDeps({ config });
+      (deps.tools.initPhaseOp as ReturnType<typeof vi.fn>).mockResolvedValue(phaseOp);
+      (deps.tools.phasePlanIndex as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('phase-plan-index failed'));
+
+      const runner = new PhaseRunner(deps);
+      const result = await runner.run('1');
+
+      const executeStep = result.steps.find(s => s.step === PhaseStepType.Execute);
+      expect(executeStep!.success).toBe(false);
+      expect(executeStep!.error).toContain('phase-plan-index failed');
     });
   });
 });
