@@ -11,11 +11,15 @@
       "types": "./dist/index.d.ts"
     }
   },
+  "bin": {
+    "gsd-sdk": "./dist/cli.js"
+  },
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration"
