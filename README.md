@@ -92,12 +92,12 @@ npx get-shit-done-cc@latest
 ```
 
 The installer prompts you to choose:
-1. **Runtime** — Claude Code, OpenCode, Gemini, Kilo, Codex, Copilot, Cursor, Windsurf, Antigravity, Augment, or all (interactive multi-select — pick multiple runtimes in a single install session)
+1. **Runtime** — Claude Code, OpenCode, Gemini, Kilo, Codex, Copilot, Cursor, Windsurf, Antigravity, Augment, Trae, or all (interactive multi-select — pick multiple runtimes in a single install session)
 2. **Location** — Global (all projects) or local (current project only)
 
 Verify with:
 - Claude Code / Gemini / Copilot / Antigravity: `/gsd:help`
-- OpenCode / Kilo / Augment: `/gsd-help`
+- OpenCode / Kilo / Augment / Trae: `/gsd-help`
 - Codex: `$gsd-help`
 
 > [!NOTE]
@@ -153,12 +153,16 @@ npx get-shit-done-cc --antigravity --local  # Install to ./.agent/
 npx get-shit-done-cc --augment --global     # Install to ~/.augment/
 npx get-shit-done-cc --augment --local      # Install to ./.augment/
 
+# Trae (ByteDance, skills-first)
+npx get-shit-done-cc --trae --global        # Install to ~/.trae/
+npx get-shit-done-cc --trae --local         # Install to ./.trae/
+
 # All runtimes
 npx get-shit-done-cc --all --global      # Install to all directories
 ```
 
 Use `--global` (`-g`) or `--local` (`-l`) to skip the location prompt.
-Use `--claude`, `--opencode`, `--gemini`, `--kilo`, `--codex`, `--copilot`, `--cursor`, `--windsurf`, `--antigravity`, `--augment`, or `--all` to skip the runtime prompt.
+Use `--claude`, `--opencode`, `--gemini`, `--kilo`, `--codex`, `--copilot`, `--cursor`, `--windsurf`, `--antigravity`, `--augment`, `--trae`, or `--all` to skip the runtime prompt.
 Use `--sdk` to also install the GSD SDK CLI (`gsd-sdk`) for headless autonomous execution.
 
 </details>

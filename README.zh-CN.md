@@ -82,7 +82,7 @@ npx get-shit-done-cc@latest
 ```
 
 安装器会提示你选择：
-1. **运行时**：Claude Code、OpenCode、Gemini、Kilo、Codex、Copilot、Cursor、Antigravity，或全部
+1. **运行时**：Claude Code、OpenCode、Gemini、Kilo、Codex、Copilot、Cursor、Windsurf、Antigravity、Trae，或全部
 2. **安装位置**：全局（所有项目）或本地（仅当前项目）
 
 安装后可这样验证：
@@ -92,6 +92,7 @@ npx get-shit-done-cc@latest
 - Codex：`$gsd-help`
 - Copilot：`/gsd:help`
 - Antigravity：`/gsd:help`
+- Trae：`/gsd-help`
 
 > [!NOTE]
 > Codex 安装走的是 skill 机制（`skills/gsd-*/SKILL.md`），不是自定义 prompt。
@@ -138,12 +139,16 @@ npx get-shit-done-cc --cursor --local    # 安装到 ./.cursor/
 npx get-shit-done-cc --antigravity --global # 安装到 ~/.gemini/antigravity/
 npx get-shit-done-cc --antigravity --local  # 安装到 ./.agent/
 
+# Trae（字节跳动，以 skills 为主）
+npx get-shit-done-cc --trae --global     # 安装到 ~/.trae/
+npx get-shit-done-cc --trae --local      # 安装到 ./.trae/
+
 # 所有运行时
 npx get-shit-done-cc --all --global      # 安装到所有目录
 ```
 
 使用 `--global`（`-g`）或 `--local`（`-l`）可以跳过安装位置提示。
-使用 `--claude`、`--opencode`、`--gemini`、`--kilo`、`--codex`、`--copilot`、`--cursor`、`--antigravity` 或 `--all` 可以跳过运行时提示。
+使用 `--claude`、`--opencode`、`--gemini`、`--kilo`、`--codex`、`--copilot`、`--cursor`、`--windsurf`、`--antigravity`、`--trae` 或 `--all` 可以跳过运行时提示。
 
 </details>
 

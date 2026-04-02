@@ -426,7 +426,7 @@ Equivalent paths for other runtimes:
 
 The installer (`bin/install.js`, ~3,000 lines) handles:
 
-1. **Runtime detection** — Interactive prompt or CLI flags (`--claude`, `--opencode`, `--gemini`, `--kilo`, `--codex`, `--copilot`, `--antigravity`, `--all`)
+1. **Runtime detection** — Interactive prompt or CLI flags (`--claude`, `--opencode`, `--gemini`, `--kilo`, `--codex`, `--copilot`, `--antigravity`, `--cursor`, `--windsurf`, `--trae`, `--all`)
 2. **Location selection** — Global (`--global`) or local (`--local`)
 3. **File deployment** — Copies commands, workflows, references, templates, agents, hooks
 4. **Runtime adaptation** — Transforms file content per runtime:
@@ -437,6 +437,7 @@ The installer (`bin/install.js`, ~3,000 lines) handles:
    - Copilot: Maps tool names (Read→read, Bash→execute, etc.)
    - Gemini: Adjusts hook event names (`AfterTool` instead of `PostToolUse`)
    - Antigravity: Skills-first with Google model equivalents
+   - Trae: Skills-first install to `~/.trae` / `./.trae` with no `settings.json` or hook integration
 5. **Path normalization** — Replaces `~/.claude/` paths with runtime-specific paths
 6. **Settings integration** — Registers hooks in runtime's `settings.json`
 7. **Patch backup** — Since v1.17, backs up locally modified files to `gsd-local-patches/` for `/gsd:reapply-patches`

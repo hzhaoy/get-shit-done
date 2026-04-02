@@ -27,9 +27,10 @@ const runtimeMap = {
   '7': 'antigravity',
   '8': 'cursor',
   '9': 'windsurf',
-  '10': 'augment'
+  '10': 'augment',
+  '11': 'trae'
 };
-const allRuntimes = ['claude', 'kilo', 'opencode', 'gemini', 'codex', 'copilot', 'antigravity', 'cursor', 'windsurf', 'augment'];
+const allRuntimes = ['claude', 'kilo', 'opencode', 'gemini', 'codex', 'copilot', 'antigravity', 'cursor', 'windsurf', 'augment', 'trae'];
 
 /**
  * Simulate the parsing logic from promptRuntime without requiring readline.
@@ -84,12 +85,16 @@ describe('multi-runtime selection parsing', () => {
     assert.deepStrictEqual(parseRuntimeInput('9'), ['windsurf']);
   });
 
+  test('single choice for trae', () => {
+    assert.deepStrictEqual(parseRuntimeInput('11'), ['trae']);
+  });
+
   test('single choice for augment', () => {
     assert.deepStrictEqual(parseRuntimeInput('10'), ['augment']);
   });
 
-  test('choice 11 returns all runtimes', () => {
-    assert.deepStrictEqual(parseRuntimeInput('11'), allRuntimes);
+  test('choice 12 returns all runtimes', () => {
+    assert.deepStrictEqual(parseRuntimeInput('12'), allRuntimes);
   });
 
   test('empty input defaults to claude', () => {
