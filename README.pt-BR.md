@@ -4,7 +4,7 @@
 
 [English](README.md) · **Português** · [简体中文](README.zh-CN.md) · [日本語](README.ja-JP.md)
 
-**Um sistema leve e poderoso de meta-prompting, engenharia de contexto e desenvolvimento orientado a especificação para Claude Code, OpenCode, Gemini CLI, Kilo, Codex, Copilot, Cursor, Windsurf, Antigravity e Augment.**
+**Um sistema leve e poderoso de meta-prompting, engenharia de contexto e desenvolvimento orientado a especificação para Claude Code, OpenCode, Gemini CLI, Kilo, Codex, Copilot, Cursor, Windsurf, Antigravity, Augment e Trae.**
 
 **Resolve context rot — a degradação de qualidade que acontece conforme o Claude enche a janela de contexto.**
 
@@ -82,7 +82,7 @@ npx get-shit-done-cc@latest
 ```
 
 O instalador pede:
-1. **Runtime** — Claude Code, OpenCode, Gemini, Kilo, Codex, Copilot, Cursor, Antigravity, ou todos
+1. **Runtime** — Claude Code, OpenCode, Gemini, Kilo, Codex, Copilot, Cursor, Windsurf, Antigravity, Trae, ou todos
 2. **Local** — Global (todos os projetos) ou local (apenas projeto atual)
 
 Verifique com:
@@ -92,6 +92,7 @@ Verifique com:
 - Codex: `$gsd-help`
 - Copilot: `/gsd:help`
 - Antigravity: `/gsd:help`
+- Trae: `/gsd-help`
 
 > [!NOTE]
 > A instalação do Codex usa skills (`skills/gsd-*/SKILL.md`) em vez de prompts customizados.
@@ -136,12 +137,16 @@ npx get-shit-done-cc --cursor --local
 npx get-shit-done-cc --antigravity --global
 npx get-shit-done-cc --antigravity --local
 
+# Trae (ByteDance, skills-first)
+npx get-shit-done-cc --trae --global        # Install to ~/.trae/
+npx get-shit-done-cc --trae --local         # Install to ./.trae/
+
 # Todos
 npx get-shit-done-cc --all --global
 ```
 
 Use `--global` (`-g`) ou `--local` (`-l`) para pular a pergunta de local.
-Use `--claude`, `--opencode`, `--gemini`, `--kilo`, `--codex`, `--copilot`, `--cursor`, `--antigravity` ou `--all` para pular a pergunta de runtime.
+Use `--claude`, `--opencode`, `--gemini`, `--kilo`, `--codex`, `--copilot`, `--cursor`, `--windsurf`, `--antigravity`, `--trae` ou `--all` para pular a pergunta de runtime.
 
 </details>
 
@@ -411,6 +416,7 @@ npx get-shit-done-cc --codex --global --uninstall
 npx get-shit-done-cc --copilot --global --uninstall
 npx get-shit-done-cc --cursor --global --uninstall
 npx get-shit-done-cc --antigravity --global --uninstall
+npx get-shit-done-cc --trae --global --uninstall
 
 # Instalações locais (projeto atual)
 npx get-shit-done-cc --claude --local --uninstall
@@ -421,6 +427,7 @@ npx get-shit-done-cc --codex --local --uninstall
 npx get-shit-done-cc --copilot --local --uninstall
 npx get-shit-done-cc --cursor --local --uninstall
 npx get-shit-done-cc --antigravity --local --uninstall
+npx get-shit-done-cc --trae --local --uninstall
 ```
 
 ---

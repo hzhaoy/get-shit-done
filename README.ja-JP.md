@@ -4,7 +4,7 @@
 
 [English](README.md) · [Português](README.pt-BR.md) · [简体中文](README.zh-CN.md) · **日本語**
 
-**Claude Code、OpenCode、Gemini CLI、Kilo、Codex、Copilot、Cursor、Windsurf、Antigravity、Augment向けの軽量かつ強力なメタプロンプティング、コンテキストエンジニアリング、仕様駆動開発システム。**
+**Claude Code、OpenCode、Gemini CLI、Kilo、Codex、Copilot、Cursor、Windsurf、Antigravity、Augment、Trae向けの軽量かつ強力なメタプロンプティング、コンテキストエンジニアリング、仕様駆動開発システム。**
 
 **コンテキストロット（Claudeがコンテキストウィンドウを消費するにつれ品質が劣化する現象）を解決します。**
 
@@ -86,7 +86,7 @@ npx get-shit-done-cc@latest
 ```
 
 インストーラーが以下の選択を求めます：
-1. **ランタイム** — Claude Code、OpenCode、Gemini、Kilo、Codex、Copilot、Cursor、Antigravity、またはすべて（インタラクティブ複数選択 — 1回のインストールセッションで複数のランタイムを選択可能）
+1. **ランタイム** — Claude Code、OpenCode、Gemini、Kilo、Codex、Copilot、Cursor、Windsurf、Antigravity、Trae、またはすべて（インタラクティブ複数選択 — 1回のインストールセッションで複数のランタイムを選択可能）
 2. **インストール先** — グローバル（全プロジェクト）またはローカル（現在のプロジェクトのみ）
 
 確認方法：
@@ -96,6 +96,7 @@ npx get-shit-done-cc@latest
 - Codex: `$gsd-help`
 - Copilot: `/gsd:help`
 - Antigravity: `/gsd:help`
+- Trae: `/gsd-help`
 
 > [!NOTE]
 > Codexのインストールでは、カスタムプロンプトではなくスキル（`skills/gsd-*/SKILL.md`）を使用します。
@@ -142,12 +143,16 @@ npx get-shit-done-cc --cursor --local       # ./.cursor/ にインストール
 npx get-shit-done-cc --antigravity --global # ~/.gemini/antigravity/ にインストール
 npx get-shit-done-cc --antigravity --local  # ./.agent/ にインストール
 
+# Trae（ByteDance、スキルファースト）
+npx get-shit-done-cc --trae --global        # ~/.trae/ にインストール
+npx get-shit-done-cc --trae --local         # ./.trae/ にインストール
+
 # 全ランタイム
 npx get-shit-done-cc --all --global      # すべてのディレクトリにインストール
 ```
 
 `--global`（`-g`）または `--local`（`-l`）でインストール先の質問をスキップできます。
-`--claude`、`--opencode`、`--gemini`、`--kilo`、`--codex`、`--copilot`、`--cursor`、`--antigravity`、または `--all` でランタイムの質問をスキップできます。
+`--claude`、`--opencode`、`--gemini`、`--kilo`、`--codex`、`--copilot`、`--cursor`、`--windsurf`、`--antigravity`、`--trae`、または `--all` でランタイムの質問をスキップできます。
 
 </details>
 
@@ -791,6 +796,7 @@ npx get-shit-done-cc --codex --global --uninstall
 npx get-shit-done-cc --copilot --global --uninstall
 npx get-shit-done-cc --cursor --global --uninstall
 npx get-shit-done-cc --antigravity --global --uninstall
+npx get-shit-done-cc --trae --global --uninstall
 
 # ローカルインストール（現在のプロジェクト）
 npx get-shit-done-cc --claude --local --uninstall
@@ -801,6 +807,7 @@ npx get-shit-done-cc --codex --local --uninstall
 npx get-shit-done-cc --copilot --local --uninstall
 npx get-shit-done-cc --cursor --local --uninstall
 npx get-shit-done-cc --antigravity --local --uninstall
+npx get-shit-done-cc --trae --local --uninstall
 ```
 
 これにより、他の設定を保持しながら、すべてのGSDコマンド、エージェント、フック、設定が削除されます。
