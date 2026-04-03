@@ -149,3 +149,69 @@ describe('Trae local install/uninstall', () => {
     assert.ok(!fs.existsSync(path.join(targetDir, 'get-shit-done')), 'get-shit-done removed');
   });
 });
+
+describe('E2E: Trae uninstall skills cleanup', () => {
+  let tmpDir;
+  let previousCwd;
+
+  beforeEach(() => {
+    tmpDir = createTempDir('gsd-trae-uninstall-');
+    previousCwd = process.cwd();
+    process.chdir(tmpDir);
+  });
+
+  afterEach(() => {
+    process.chdir(previousCwd);
+    cleanup(tmpDir);
+  });
+
+  test('removes all gsd-* skill directories on --trae --uninstall', () => {
+    const targetDir = path.join(tmpDir, '.trae');
+    install(false, 'trae');
+
+    const skillsDir = path.join(targetDir, 'skills');
+    assert.ok(fs.existsSync(skillsDir), 'skills dir exists after install');
+
+    const installedSkills = fs.readdirSync(skillsDir, { withFileTypes: true })
+      .filter(e => e.isDirectory() && e.name.startsWith('gsd-'));
+    assert.ok(installedSkills.length > 0, `found ${installedSkills.length} gsd-* skill dirs before uninstall`);
+
+    uninstall(false, 'trae');
+
+    if (fs.existsSync(skillsDir)) {
+      const remainingGsd = fs.readdirSync(skillsDir, { withFileTypes: true })
+        .filter(e => e.isDirectory() && e.name.startsWith('gsd-'));
+      assert.strictEqual(remainingGsd.length, 0,
+        `Expected 0 gsd-* skill dirs after uninstall, found: ${remainingGsd.map(e => e.name).join(', ')}`);
+    }
+  });
+
+  test('preserves non-GSD skill directories during --trae --uninstall', () => {
+    const targetDir = path.join(tmpDir, '.trae');
+    install(false, 'trae');
+
+    const customSkillDir = path.join(targetDir, 'skills', 'my-custom-skill');
+    fs.mkdirSync(customSkillDir, { recursive: true });
+    fs.writeFileSync(path.join(customSkillDir, 'SKILL.md'), '# My Custom Skill\n');
+
+    assert.ok(fs.existsSync(path.join(customSkillDir, 'SKILL.md')), 'custom skill exists before uninstall');
+
+    uninstall(false, 'trae');
+
+    assert.ok(fs.existsSync(path.join(customSkillDir, 'SKILL.md')),
+      'Non-GSD skill directory should be preserved after Trae uninstall');
+  });
+
+  test('removes engine directory on --trae --uninstall', () => {
+    const targetDir = path.join(tmpDir, '.trae');
+    install(false, 'trae');
+
+    assert.ok(fs.existsSync(path.join(targetDir, 'get-shit-done', 'VERSION')),
+      'engine exists before uninstall');
+
+    uninstall(false, 'trae');
+
+    assert.ok(!fs.existsSync(path.join(targetDir, 'get-shit-done')),
+      'get-shit-done engine should be removed after Trae uninstall');
+  });
+});

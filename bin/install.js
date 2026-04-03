@@ -1423,15 +1423,17 @@ function copyCommandsAsAugmentSkills(srcDir, skillsDir, prefix, pathPrefix, runt
 }
 
 function convertSlashCommandsToTraeSkillMentions(content) {
-  return content.replace(/gsd:/gi, 'gsd-');
+  return content.replace(/\/gsd:([a-z0-9-]+)/g, (_, commandName) => {
+    return `/gsd-${commandName}`;
+  });
 }
 
 function convertClaudeToTraeMarkdown(content) {
   let converted = convertSlashCommandsToTraeSkillMentions(content);
   converted = converted.replace(/\bBash\(/g, 'Shell(');
   converted = converted.replace(/\bEdit\(/g, 'StrReplace(');
-  converted = converted.replace(/\bAskUserQuestion\b/g, 'conversational prompting');
-  converted = converted.replace(/subagent_type="general-purpose"/g, 'subagent_type="generalPurpose"');
+  // Replace general-purpose subagent type with Trae's equivalent "general_purpose_task"
+  converted = converted.replace(/subagent_type="general-purpose"/g, 'subagent_type="general_purpose_task"');
   converted = converted.replace(/\$ARGUMENTS\b/g, '{{GSD_ARGS}}');
   converted = converted.replace(/`\.\/CLAUDE\.md`/g, '`.trae/rules/`');
   converted = converted.replace(/\.\/CLAUDE\.md/g, '.trae/rules/');
