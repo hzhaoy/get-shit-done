@@ -325,8 +325,12 @@ function getGlobalDir(runtime, explicitDir = null) {
     return path.join(os.homedir(), '.augment');
   }
   if (runtime === 'trae') {
+    // Trae: --config-dir > TRAE_CONFIG_DIR > ~/.trae
     if (explicitDir) {
       return expandTilde(explicitDir);
+    }
+    if (process.env.TRAE_CONFIG_DIR) {
+      return expandTilde(process.env.TRAE_CONFIG_DIR);
     }
     return path.join(os.homedir(), '.trae');
   }
