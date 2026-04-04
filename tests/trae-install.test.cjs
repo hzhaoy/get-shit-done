@@ -35,6 +35,50 @@ describe('Trae runtime directory mapping', () => {
   });
 });
 
+describe('getGlobalDir (Trae)', () => {
+  let originalTraeConfigDir;
+
+  beforeEach(() => {
+    originalTraeConfigDir = process.env.TRAE_CONFIG_DIR;
+  });
+
+  afterEach(() => {
+    if (originalTraeConfigDir !== undefined) {
+      process.env.TRAE_CONFIG_DIR = originalTraeConfigDir;
+    } else {
+      delete process.env.TRAE_CONFIG_DIR;
+    }
+  });
+
+  test('returns ~/.trae with no env var or explicit dir', () => {
+    delete process.env.TRAE_CONFIG_DIR;
+    const result = getGlobalDir('trae');
+    assert.strictEqual(result, path.join(os.homedir(), '.trae'));
+  });
+
+  test('returns explicit dir when provided', () => {
+    const result = getGlobalDir('trae', '/custom/trae-path');
+    assert.strictEqual(result, '/custom/trae-path');
+  });
+
+  test('respects TRAE_CONFIG_DIR env var', () => {
+    process.env.TRAE_CONFIG_DIR = '~/custom-trae';
+    const result = getGlobalDir('trae');
+    assert.strictEqual(result, path.join(os.homedir(), 'custom-trae'));
+  });
+
+  test('explicit dir takes priority over TRAE_CONFIG_DIR', () => {
+    process.env.TRAE_CONFIG_DIR = '~/from-env';
+    const result = getGlobalDir('trae', '/explicit/path');
+    assert.strictEqual(result, '/explicit/path');
+  });
+
+  test('does not break other runtimes', () => {
+    assert.strictEqual(getGlobalDir('claude'), path.join(os.homedir(), '.claude'));
+    assert.strictEqual(getGlobalDir('codex'), path.join(os.homedir(), '.codex'));
+  });
+});
+
 describe('Trae markdown conversion', () => {
   test('converts Claude-specific references to Trae equivalents', () => {
     const input = [
