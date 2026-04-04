@@ -134,6 +134,7 @@ describe('Trae local install/uninstall', () => {
       settings: null,
       statuslineCommand: null,
       runtime: 'trae',
+      configDir: fs.realpathSync(targetDir),
     });
 
     assert.ok(fs.existsSync(path.join(targetDir, 'skills', 'gsd-help', 'SKILL.md')));

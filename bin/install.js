@@ -3921,7 +3921,9 @@ function copyWithPathReplacement(srcDir, destDir, pathPrefix, runtime, isCommand
       fs.writeFileSync(destPath, jsContent);
     } else if (isTrae && (entry.name.endsWith('.cjs') || entry.name.endsWith('.js'))) {
       let jsContent = fs.readFileSync(srcPath, 'utf8');
-      jsContent = jsContent.replace(/gsd:/gi, 'gsd-');
+      jsContent = jsContent.replace(/\/gsd:([a-z0-9-]+)/g, (_, commandName) => {
+        return `/gsd-${commandName}`;
+      });
       jsContent = jsContent.replace(/\.claude\/skills\//g, '.trae/skills/');
       jsContent = jsContent.replace(/CLAUDE\.md/g, '.trae/rules/');
       jsContent = jsContent.replace(/\bClaude Code\b/g, 'Trae');
@@ -5983,7 +5985,7 @@ function promptRuntime(callback) {
     const input = answer.trim() || '1';
 
     // "All" shortcut
-    if (input === '11') {
+    if (input === '12') {
       callback(allRuntimes);
       return;
     }
